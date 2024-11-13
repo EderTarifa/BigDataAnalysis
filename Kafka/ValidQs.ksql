@@ -1,0 +1,16 @@
+CREATE STREAM ibd08_adh WITH (KAFKA_TOPIC='ibd08.adh.schema', value_format='AVRO') AS SELECT
+    STRUCT(IP := IP, UAID := UAID) AS K,
+    FORMAT_TIMESTAMP(APACHE_TS, 'dd') AS DD,
+    FORMAT_TIMESTAMP(APACHE_TS, 'HH') AS HH
+  FROM ibd08_accesos PARTITION BY STRUCT(IP := IP, UAID := UAID) EMIT CHANGES;
+
+
+CREATE TABLE ibd08_adh10 WITH (KAFKA_TOPIC='ibd08.adh10', KEY_FORMAT='AVRO', value_format='AVRO') AS SELECT
+    K->IP AS IP,
+    K->UAID AS UAID,
+    DD,
+    HH,
+    COUNT(*) AS N
+  FROM ibd08_adh 
+  GROUP BY K->IP, K->UAID, DD, HH
+  HAVING COUNT(*)>9;

@@ -1,0 +1,31 @@
+version: "3.9"
+
+services:
+  clickhouse:
+    image: clickhouse/clickhouse-server
+    container_name: clickhouse
+    hostname: clickhouse
+    volumes:
+      - /clickhouse/data:/var/lib/clickhouse
+      - /etc/localtime:/etc/localtime:ro
+    ports:
+      - '127.0.0.1:8123:8123'
+      - '127.0.0.1:900:9001'
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - CLICHOUSE_HOST=triqui2.fi.upm.es
+      - CLICKHOUSE_USER=ibd08
+      - CLICKHOUSE_PASSWORD=cKFVM2gn
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "localhost:8123/ping"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+networks:
+  default: 
+    name: etsiinf
+    external: true
+
+# docker exec -it clickhouse clickhouse-client -h clickhouse --port 9001 -u ibd08 --password '------------' 

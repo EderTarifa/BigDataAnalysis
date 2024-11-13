@@ -1,0 +1,64 @@
+CREATE SOURCE CONNECTOR `ibd08-s3-source` WITH(
+	"connector.class" = 'io.confluent.connect.s3.source.S3SourceConnector',
+	"confluent.topic.bootstrap.servers" = 'broker:9092',
+	"confluent.license" = '',
+	"confluent.license.topic.replication.factor" = '1',
+	"confluent.topic.replication.factor" = '1',
+	"storage.class" = 'io.confluent.connect.s3.storage.S3Storage',
+	"format.class" = 'io.confluent.connect.s3.format.avro.AvroFormat',
+	"tasks.max" = '1',
+	"store.url" = 'http://triqui2.fi.upm.es:30009',
+	"s3.bucket.name" = 'kafka',
+	"s3.region" = 'eu-west-2',
+	"aws.access.key.id" = 'seibe',
+	"aws.secret.access.key" = 'mIiZnAiRo',
+	"partitioner.class" = 'io.confluent.connect.storage.partitioner.TimeBasedPartitioner',
+	"path.format" = 'YYYY/MM/dd',
+	"topic.prefix" = 'ibd08.',
+	"key.converter" = 'io.confluent.connect.avro.AvroConverter',
+	"key.converter.schema.registry.url" = 'http://schema-registry:8081',
+	"key.converter.schema.enable" = 'false',
+	"value.converter" = 'io.confluent.connect.avro.AvroConverter',
+	"value.converter.schema.registry.url" = 'http://schema-registry:8081',
+	"value.converter.schema.enable" = 'fasle');
+
+CREATE STREAM ibd08_weblog (
+    GEOIP STRUCT<IP VARCHAR(STRING),"as" STRUCT<ORGANIZATION STRUCT<NAME VARCHAR(STRING)>, NUMBER INTEGER>,
+                GEO STRUCT<POSTAL_CODE VARCHAR(STRING), CITY_NAME VARCHAR(STRING), COUNTRY_NAME VARCHAR(STRING), REGION_ISO_CODE VARCHAR(STRING),
+                TIMEZONE VARCHAR(STRING), LOCATION STRUCT<LATITUDE DOUBLE, LONGITUDE DOUBLE>, COUNTRY_ISO_CODE VARCHAR(STRING), REGION_NAME VARCHAR(STRING), CONTINENT_CODE VARCHAR(STRING)>>,
+    URL VARCHAR,
+    USER_AGENT STRUCT<UAID VARCHAR(STRING), ORIGINAL VARCHAR(STRING), OS STRUCT<VERSION VARCHAR(STRING),NAME VARCHAR(STRING),"full" VARCHAR(STRING)>, VERSION VARCHAR(STRING),NAME VARCHAR(STRING), DEVICE STRUCT<NAME VARCHAR(STRING)>>,   
+    HTTP STRUCT<RESPONSE STRUCT<BODY STRUCT<BYTES INTEGER>,STATUS_CODE INTEGER>, REQUEST STRUCT<METHOD VARCHAR(STRING), REFERRER VARCHAR(STRING)>, VERSION VARCHAR(STRING)>,
+    APACHE_TS TIMESTAMP)
+WITH (kafka_topic='weblog', value_format='AVRO');
+SET 'auto.offset.reset'='earliest';
+
+CREATE STREAM ibd08_accesos WITH (KAFKA_TOPIC='ibd08.accesos', value_format='AVRO') AS SELECT
+    GEOIP->IP AS IP,
+    USER_AGENT->UAID AS UAID,
+    TO_BYTES(URL, 'UTF8') AS UTF8URL,
+    STRUCT(OSINFO :=USER_AGENT->OS->NAME + ':' + USER_AGENT->OS->"FULL" + ':' + USER_AGENT->OS->VERSION,
+     UANAME := USER_AGENT->NAME, DEVNAME := USER_AGENT->DEVICE->NAME) AS UAINFO,
+    STRUCT(MET := HTTP->REQUEST->METHOD, REF := HTTP->REQUEST->REFERRER, STC := HTTP->RESPONSE->STATUS_CODE) AS HTTPINFO,
+    APACHE_TS AS APACHE_TS
+  FROM ibd08_weblog EMIT CHANGES;
+
+CREATE TABLE ibd08_geoips WITH (KAFKA_TOPIC='ibd08.geoips', KEY_FORMAT='AVRO', value_format='AVRO') AS SELECT
+    GEOIP->IP AS IP,
+    GEOIP->"AS"->ORGANIZATION->NAME AS NOMORG,
+    GEOIP->"AS"->NUMBER AS NUMORG,
+    GEOIP->GEO->POSTAL_CODE AS POSTAL_CODE,
+    GEOIP->GEO->CITY_NAME AS CITY_NAME,
+    GEOIP->GEO->COUNTRY_NAME AS COUNTRY_NAME,
+    GEOIP->GEO->REGION_NAME AS REGION_NAME,
+    GEOIP->GEO->REGION_ISO_CODE AS REGION_ISO_CODE,
+    GEOIP->GEO->CONTINENT_CODE AS CONTINENT_CODE,
+    GEOIP->GEO->TIMEZONE AS TIMEZONE,
+    GEOIP->GEO->LOCATION->LAT AS LAT,
+    GEOIP->GEO->LOCATION->LON AS LON,
+    count(*) as N
+  FROM ibd08_weblog
+  GROUP BY GEOIP->IP, GEOIP->"AS"->ORGANIZATION->NAME, GEOIP->"AS"->NUMBER, GEOIP->GEO->POSTAL_CODE, GEOIP->GEO->CITY_NAME,
+   GEOIP->GEO->COUNTRY_NAME, GEOIP->GEO->REGION_NAME, GEOIP->GEO->REGION_ISO_CODE, GEOIP->GEO->CONTINENT_CODE, GEOIP->GEO->TIMEZONE,
+    GEOIP->GEO->LOCATION->LAT, GEOIP->GEO->LOCATION->LON;
+
